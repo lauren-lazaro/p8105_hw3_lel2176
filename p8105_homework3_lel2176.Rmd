@@ -1,0 +1,249 @@
+---
+title: "p8105_hw3_lel2176"
+output: github_document
+date: "2023-10-13"
+---
+
+```{r}
+library(tidyverse)
+library(p8105.datasets)
+library(dplyr)
+data("brfss_smart2010")
+```
+
+## Problem 2
+
+#### tidy BRFSS data
+
+```{r}
+BRFSS = 
+brfss_smart2010 |> 
+  select(Year, Locationabbr, Locationdesc, Class, Topic, Question, Response, Sample_Size, Data_value, Confidence_limit_Low, Confidence_limit_High, Display_order, GeoLocation) |> 
+  rename(year = Year) |> 
+  rename(state = Locationabbr) |> 
+  rename(county = Locationdesc) |> 
+  rename(class = Class) |> 
+  rename(topic = Topic) |> 
+  rename(question = Question) |> 
+  rename(response = Response) |> 
+  rename(sample_size = Sample_Size) |> 
+  rename(data_value = Data_value) |> 
+  rename(lower_confidence_lim = Confidence_limit_Low) |> 
+  rename(upper_confidence_lim = Confidence_limit_High) |> 
+  rename(display_order = Display_order) |> 
+  rename(geolocation = GeoLocation)
+```
+
+#### sort tidy BRFSS data by general health responses
+
+```{r}
+overall_health = BRFSS[BRFSS$topic=="Overall Health",]
+
+sorted_overall_health = 
+overall_health |> 
+  mutate(overall_health = fct_relevel(overall_health$response, c("Poor", "Fair", "Good", "Very good", "Excellent"))) |> 
+  arrange(overall_health)
+
+sorted_overall_health
+```
+
+
+#### analyze 2002 data
+
+```{r}
+counties_2002 = 
+  sorted_overall_health |> 
+  filter(year == 2002) |> 
+  group_by(state) |> 
+  summarize(counties = length(unique(county))) |> 
+  filter(counties >= 7)
+
+counties_2002
+```
+
+#### analyze 2010 data
+
+```{r}
+counties_2010 = 
+  sorted_overall_health |> 
+  filter(year == 2010) |> 
+  group_by(state) |> 
+  summarize(counties = length(unique(county))) |> 
+  filter(counties >= 7)
+
+counties_2010
+```
+
+States with 7 or more observed `Excellent` responses 2002:
+CT, FL, MA, NJ, NC, PA
+
+States with 7 or more observed `Excellent` responses 2010:
+CA, CO, FL, MD, MA, NE, NJ, NY, NC, OH, PA, SC, TX, WA
+
+#### analyze by excellent responses 
+
+```{r}
+excellent_data = 
+  sorted_overall_health |> 
+  filter(response == "Excellent") |> 
+  group_by(year, county) |> 
+  summarize(data_value_average = mean(data_value, na.rm = TRUE))
+
+excellent_data
+
+ggplot(
+  excellent_data, aes(x = year, y = data_value_average, group = county))+
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "'Excellent' Responses by State Over Time", 
+    x = "year", 
+    y = "average"
+  )
+```
+
+this spaghetti plot shows the average number of `Excellent` responses to a question about overall health throughout the years by each state. most of the states follow similar trend lines with a few high and low outliers. there appears to be an ever so slight decrease in `Excellent` responses from 2002 to 2010. 
+
+#### compare 2006 and 2010 data 
+
+```{r}
+data_2006_2010 =
+  sorted_overall_health |> 
+  filter(state == "NY" & (year == "2006" | year == "2010")) |> 
+  ggplot(aes(x = data_value)) +
+  geom_histogram(binwidth = 10)  +
+  facet_grid(year ~ response)
+
+data_2006_2010
+```
+
+this visualization of data shows the distribution of `data_value` for the different responses for all of the different locations in New York in both 2006 and 2010. it appears that in 2010, there are more observed `Excellent`, `Fair`, `Good`, and `Poor` responses than in 2006. the observations for `Very good` are about the same for 2006 and 2010. 
+
+## Probem 3
+
+#### load data and clean 
+
+```{r}
+demographics = 
+  read_csv("data/nhanes_covar.csv")[-c(1, 2, 3, 4),] 
+demographics = na.omit(demographics)
+
+demographics = 
+  demographics |> 
+  rename(seqn = `...1`) |> 
+  rename(sex = `1 = male`) |> 
+  rename(age = `...3`) |> 
+  rename(bmi = `...4`) |> 
+  rename(education = `1 = Less than high school`) |> 
+  mutate(
+    sex = case_match(
+      sex, 
+      "1" ~ "male",
+      "2" ~ "female"
+    )
+  ) |> 
+  mutate(
+    education = case_match(
+      education, 
+      "1" ~ "less than high school",
+      "2" ~ "high school equivalent",
+      "3" ~ "more than high school"
+    )
+  ) |> 
+  mutate(seqn = as.numeric(seqn)) |> 
+  mutate(sex = as.factor(sex)) |> 
+  mutate(age = as.numeric(age)) |>  
+  mutate(bmi = as.numeric(bmi)) |>  
+  mutate(education = as.factor(education))
+
+demographics = demographics[demographics$age > 21,]
+
+
+accelerometer = read_csv("data/nhanes_accel.csv")
+
+accelerometer |> 
+  janitor::clean_names() 
+
+accelerometer = 
+  na.omit(accelerometer)
+```
+
+#### marge dataframes 
+
+```{r}
+demo_acc =
+  demographics |> 
+  group_by(education, sex) |> 
+  summarize(count = n()) |> 
+  pivot_wider(names_from = sex, values_from = count)
+
+  knitr::kable(demo_acc)
+```
+
+#### create plot 
+
+```{r}
+age_plot =
+  demographics |> 
+  ggplot(aes(x = age, fill = sex)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 7) +
+  facet_grid(sex ~ education) +
+  labs(
+    title = "Distribution of Age According to Sex and Education",
+    x = "Age",
+    y = "Count"
+  )
+
+print(age_plot)
+```
+
+the table `demo_acc` shows the male and female distribution of different education levels. the different education levels include `high school equivalent`, `less than high school`, and `more than high school`. from this table, we see more males with `high schoool equivalent` education, but more females for both `less than high school` and `more than high school` educations. the plot `age_plot` shows a visual representation of the male and female distribution of different education levels. through this graph, we can compare each age group of males and females for the three various education levels. `age_plot` follows the same trends as seen in `demo_acc`, but more detail is shown since age is represented on the x-axis. 
+
+#### total activity 
+
+```{r}
+acc_wo_seqn = accelerometer[,-1] 
+
+total_activity_df = 
+  accelerometer |> 
+  rename(seqn = SEQN) |> 
+  mutate(total_activity = rowSums(acc_wo_seqn))
+
+total_activity_df
+
+join_data =
+  demographics |> 
+  inner_join(total_activity_df, by = "seqn")
+
+join_data
+
+ggplot(join_data, aes(x = age, y = total_activity, color = sex)) +
+  geom_point() +
+  facet_grid(. ~ education) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(
+    title = "Trends in Activity Level According to Gender and Education",
+    x = "age",
+    y = "total activity"
+  )
+
+```
+
+the graph showing `trends in activity level according to gender and education` consistently shows in each education level group that activity level decreases as age increases. overall, as individuals age, their activity goes down. however, the slope at which `total_activity` decreases is the steepest for the `less than high school` education level and is the least steep for the `more than high school` education level. the general trends are mostly similar for both males and females in each education level group. 
+
+```{r}
+join_data = 
+  join_data |>  
+  pivot_longer(cols = starts_with("min"), names_to = "min", values_to = "activity") |>  
+  mutate(min = str_remove(min, "min")) |>  
+  mutate(min = as.integer(min)) |>  
+  ggplot(aes(x = min, y = activity, color = sex)) +
+  geom_point(alpha = .5) +
+  geom_smooth(se = FALSE) +
+  facet_wrap(~education)
+  
+join_data
+
+```
+
+the plot `join_data` shows the distribution of male and female activity levels throughout the three various education levels more in depth using 24-hour activity time courses. the plot shows in each education level that the activity level rapidly increases at the start of the day, stays constant in the middle, and then decreases as time approaches the end of the 24 hours. in the `more than high school` education level group, there are many more outliers where individuals were significantly more active. these outliers are especially frequent among the males in this category. 
